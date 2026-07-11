@@ -80,13 +80,20 @@ signs in and their data follows them to any device.
        match /users/{uid}/{document=**} {
          allow read, write: if request.auth != null && request.auth.uid == uid;
        }
-       // Approved-users allow-list. A signed-in person may read only the entry
-       // that matches their own email (to check if they're approved). Nobody can
-       // edit the list from the app — you manage it in the Firebase console.
+       // An admin is anyone whose own allow-list entry has  admin: true.
+       function isAdmin() {
+         return request.auth != null
+           && exists(/databases/$(database)/documents/allowlist/$(request.auth.token.email.lower()))
+           && get(/databases/$(database)/documents/allowlist/$(request.auth.token.email.lower())).data.admin == true;
+       }
+       // Approved-users allow-list.
+       //  - A normal user may read only their own entry (to check they're approved).
+       //  - An admin may read the whole list and add/remove people (from the in-app
+       //    Manage access panel). No one else can write to it.
        match /allowlist/{email} {
-         allow read: if request.auth != null
-                     && request.auth.token.email.lower() == email;
-         allow write: if false;
+         allow read:  if request.auth != null
+                      && (request.auth.token.email.lower() == email || isAdmin());
+         allow write: if isAdmin();
        }
      }
    }
@@ -105,19 +112,27 @@ there, they're in; if not, they're immediately signed back out with a
 "not approved yet" message. The security rules above stop anyone editing the
 list from the app.
 
-**To approve someone** (Firebase Console → Firestore Database → Data):
-1. Click **Start collection** (first time) and name it exactly `allowlist`.
-   After that, just **Add document** to the existing `allowlist` collection.
-2. For **Document ID**, enter the person's email in **lower case**, e.g.
-   `jane@example.com`. (Google sign-in and Email/Password both use the account's
-   email, so one entry covers either sign-in method.)
-3. You don't need any fields — an empty document is enough. (Optional: add a
-   `name` or `note` field for your own reference.)
-4. Save. They can now sign in. **To revoke access**, delete that document — they
-   can't get past login on their next attempt.
+### Easiest: manage people from inside the app (admin panel)
+Once you're an **admin**, you never need the Firebase console again — a
+**Manage access** button appears on the Account card (Settings tab, only for
+admins). From there you can add people by email, tick "make them an admin", and
+remove anyone with one tap.
+
+**One-time bootstrap — make yourself the first admin** (Firebase Console →
+Firestore Database → Data):
+1. Click **Start collection**, name it exactly `allowlist`.
+2. **Document ID** = your email in **lower case** (e.g. `you@example.com`).
+3. Add one field: name `admin`, type **boolean**, value **true**. Save.
+4. Sign in on the app → the **Manage access** panel is now available. Add/remove
+   everyone else from there — no more console.
+
+**Managing from the console instead** (if you ever want to): each approved person
+is a document in `allowlist` whose ID is their lower-case email. An empty
+document approves them as a normal user; add `admin: true` to make them an admin.
+Delete the document to revoke access.
 
 Notes:
-- Add yourself first, or you'll lock yourself out.
+- Make yourself admin first, or you'll have no way to manage the list in-app.
 - Emails are matched lower-case, so always use lower case for the Document ID.
 - Anyone can still *download* the app; the allow-list is what actually controls
   access.

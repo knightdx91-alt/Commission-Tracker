@@ -549,8 +549,25 @@ tbody td:last-child{text-align:right;font-family:var(--font-num);font-variant-nu
       <div id="accountSignedIn" hidden>
         <p class="hint">Signed in as <b id="acctEmail"></b>. Your periods, rates, goal, and scanned codes sync automatically across your devices.</p>
         <div class="sync-status" id="cloudStatus" data-kind="ok">Synced.</div>
-        <div class="btn-row"><button type="button" class="neutral" id="signOutBtn">Sign out</button></div>
+        <div class="btn-row">
+          <button type="button" class="neutral" id="signOutBtn">Sign out</button>
+          <button type="button" class="soft" id="manageAccessBtn" hidden>Manage access</button>
+        </div>
       </div>
+    </div>
+
+    <!-- Admin-only: manage the login allow-list. Hidden unless an admin is signed in. -->
+    <div class="card" id="adminCard" hidden>
+      <h2>Access control <span class="hint" style="font-weight:normal">(admin)</span></h2>
+      <p class="hint">People on this list can sign in and use the app. Anyone not listed is blocked at the login screen.</p>
+      <div class="grid g2">
+        <div class="field"><label for="allowEmail">Add person's email</label><input id="allowEmail" type="email" autocomplete="off" placeholder="person@example.com"/></div>
+        <div class="field"><label for="allowAdmin" style="visibility:hidden">.</label><label style="display:flex;align-items:center;gap:8px;font-weight:normal"><input id="allowAdmin" type="checkbox"/> Also make them an admin</label></div>
+      </div>
+      <div class="btn-row"><button type="button" class="primary" id="allowAddBtn">Add to allow-list</button></div>
+      <div class="sync-status" id="adminStatus" hidden></div>
+      <div class="section-label">Approved people</div>
+      <div id="allowList" class="table-wrap"></div>
     </div>
 
     <div class="card">
@@ -1191,11 +1208,78 @@ window.onCloudUser=function(user){
           .catch(()=>setCloudStatus("Not synced yet.","err"));
       }
     }).catch(()=>setCloudStatus("Couldn't load — working offline.","err"));
+    refreshAdminUI();
     toast("Signed in");
   }else{
     inEl.hidden=true;outEl.hidden=false;
+    hideAdminUI();
   }
 };
+// ---- admin: allow-list management (only visible to admins) ----
+function hideAdminUI(){
+  const b=$("manageAccessBtn"),c=$("adminCard");
+  if(b)b.hidden=true;
+  if(c)c.hidden=true;
+}
+async function refreshAdminUI(){
+  const b=$("manageAccessBtn");
+  if(!window.cloud||!b)return;
+  let admin=false;
+  try{admin=await window.cloud.isAdmin();}catch(e){admin=false;}
+  b.hidden=!admin;
+  if(!admin)$("adminCard").hidden=true;
+}
+function setAdminStatus(msg,kind){
+  const el=$("adminStatus");if(!el)return;
+  el.hidden=false;el.textContent=msg;el.setAttribute("data-kind",kind||"");
+}
+async function renderAllowList(){
+  const box=$("allowList");if(!box)return;
+  box.innerHTML='<p class="hint">Loading…</p>';
+  try{
+    const people=await window.cloud.listAllowed();
+    people.sort((a,b)=>a.email.localeCompare(b.email));
+    const me=(window.cloud.user&&window.cloud.user.email||"").toLowerCase();
+    if(!people.length){box.innerHTML='<p class="hint">No one added yet.</p>';return;}
+    box.innerHTML='<table><thead><tr><th>Email</th><th>Role</th><th></th></tr></thead><tbody>'+
+      people.map(p=>{
+        const isMe=p.email===me;
+        return '<tr><td>'+escapeHtml(p.email)+(isMe?' <span class="hint">(you)</span>':'')+
+          '</td><td>'+(p.admin?'Admin':'User')+
+          '</td><td style="text-align:right">'+
+          (isMe?'':'<button type="button" class="soft" data-remove="'+escapeHtml(p.email)+'">Remove</button>')+
+          '</td></tr>';
+      }).join('')+'</tbody></table>';
+  }catch(e){
+    box.innerHTML='<p class="hint" data-kind="err">Couldn’t load the list. Are the security rules published?</p>';
+  }
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function wireAdmin(){
+  const btn=$("manageAccessBtn");if(!btn)return;
+  btn.addEventListener("click",()=>{
+    const c=$("adminCard");const show=c.hidden;c.hidden=!show;
+    if(show){renderAllowList();c.scrollIntoView({behavior:"smooth",block:"start"});}
+  });
+  $("allowAddBtn").addEventListener("click",async()=>{
+    const email=$("allowEmail").value,makeAdmin=$("allowAdmin").checked;
+    setAdminStatus("Adding…","busy");
+    try{
+      const key=await window.cloud.addAllowed(email,makeAdmin);
+      $("allowEmail").value="";$("allowAdmin").checked=false;
+      setAdminStatus(key+" can now sign in.","ok");
+      renderAllowList();
+    }catch(e){setAdminStatus(e&&e.message||"Couldn’t add — check you’re an admin and rules are published.","err");}
+  });
+  $("allowList").addEventListener("click",async e=>{
+    const rm=e.target.closest("[data-remove]");if(!rm)return;
+    const email=rm.dataset.remove;
+    if(!confirm("Remove "+email+"? They’ll be blocked at login next time."))return;
+    setAdminStatus("Removing…","busy");
+    try{await window.cloud.removeAllowed(email);setAdminStatus(email+" removed.","ok");renderAllowList();}
+    catch(e){setAdminStatus(e&&e.message||"Couldn’t remove.","err");}
+  });
+}
 // called by the Firebase module when a valid sign-in is blocked by the allow-list
 window.onAccessDenied=function(user){
   const inEl=$("accountSignedIn"),outEl=$("accountSignedOut");
@@ -1317,6 +1401,7 @@ $("periodDate").value=new Date().toISOString().slice(0,10);
 $("syncUrl").value=load(KEY_SYNC,"")||"";
 $("goalInput").value=goal||"";
 wireAccount();
+wireAdmin();
 renderAll();
 
 // ---- offline: register service worker when hosted (skipped in sandboxes/file://) ----
@@ -1337,7 +1422,7 @@ if (cfg && cfg.apiKey) {
     const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
             signOut, GoogleAuthProvider, signInWithPopup, setPersistence, browserLocalPersistence }
       = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
-    const { getFirestore, doc, getDoc, setDoc }
+    const { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs }
       = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
 
     const app = initializeApp(cfg);
@@ -1363,6 +1448,30 @@ if (cfg && cfg.apiKey) {
           // A "permission-denied" here means the doc isn't there / not readable → treat as not approved.
           return false;
         }
+      },
+      // --- admin: manage the allow-list from inside the app ---
+      async isAdmin(){
+        const email = (auth.currentUser && auth.currentUser.email || "").toLowerCase();
+        if(!email) return false;
+        try{
+          const snap = await getDoc(doc(db, "allowlist", email));
+          return snap.exists() && snap.data().admin === true;
+        }catch(e){ return false; }
+      },
+      async listAllowed(){
+        const snap = await getDocs(collection(db, "allowlist"));
+        return snap.docs.map(d => ({ email: d.id, ...(d.data()||{}) }));
+      },
+      async addAllowed(email, makeAdmin){
+        const key = (email||"").trim().toLowerCase();
+        if(!key || !key.includes("@")) throw new Error("Enter a valid email.");
+        await setDoc(doc(db, "allowlist", key),
+          { addedBy: (auth.currentUser&&auth.currentUser.email)||null, addedAt: Date.now(), admin: !!makeAdmin }, { merge: true });
+        return key;
+      },
+      async removeAllowed(email){
+        const key = (email||"").trim().toLowerCase();
+        await deleteDoc(doc(db, "allowlist", key));
       },
       async save(data){
         if(!auth.currentUser) throw new Error("not signed in");
