@@ -309,6 +309,14 @@ tbody td:last-child{text-align:right;font-family:var(--font-num);font-variant-nu
 .rate-row .prefix span{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.9rem;font-family:var(--font-num)}
 .rate-row .prefix input{padding-left:23px;text-align:right}
 
+.cat-item{border:1px solid var(--line);border-radius:var(--radius-sm);padding:11px;margin-bottom:9px;background:var(--panel-2)}
+.cat-item .r1{display:flex;gap:9px;align-items:center}
+.cat-item .r1 input{flex:1}
+.cat-item .r2{display:flex;gap:9px;align-items:center;margin-top:9px}
+.cat-item .r2 select{flex:1}
+.cat-item .code{font-family:var(--font-num);font-size:.72rem;color:var(--muted);white-space:nowrap}
+.cat-del{flex:none;width:44px;min-height:44px;padding:0;background:var(--bad-soft);color:var(--bad);font-size:1rem}
+
 .sync-status{margin-top:12px;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:11px 13px;color:var(--ink-soft);font-size:.82rem;line-height:1.5}
 .sync-status[data-kind="ok"]{background:var(--good-soft);color:var(--good);border-color:transparent}
 .sync-status[data-kind="err"]{background:var(--bad-soft);color:var(--bad);border-color:transparent}
@@ -564,6 +572,15 @@ tbody td:last-child{text-align:right;font-family:var(--font-num);font-variant-nu
         <input id="goalInput" class="num-in" type="number" min="0" step="10" inputmode="numeric" placeholder="e.g. 500"/>
       </div>
       <div class="btn-row"><button type="button" id="saveGoalBtn" class="soft" style="flex:none;min-width:140px">Save goal</button></div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:4px">
+        <h2 style="margin:0">Scanned products</h2>
+        <span class="tag" id="catalogCount">0</span>
+      </div>
+      <p class="hint">Barcodes the scanner has learned. Rename a product or change what it counts as, and it applies to every future scan.</p>
+      <div id="catalogList"></div>
     </div>
 
     <div class="card">
@@ -858,6 +875,25 @@ function renderTables(){
   $("tblAdd").innerHTML=add;
 }
 
+// ---- scanned products (catalog) editor ----
+function renderCatalog(){
+  const box=$("catalogList");if(!box)return;
+  const entries=Object.entries(catalog);
+  $("catalogCount").textContent=entries.length;
+  if(!entries.length){box.innerHTML=`<div class="empty" style="padding:20px">No scanned products yet. Scan a barcode and it'll show up here.</div>`;return;}
+  box.innerHTML=entries.map(([code,e])=>`
+    <div class="cat-item" data-code="${esc(code)}">
+      <div class="r1">
+        <input class="cat-name" value="${esc(e.label)}" aria-label="Product name"/>
+        <button type="button" class="cat-del" aria-label="Delete this product">✕</button>
+      </div>
+      <div class="r2">
+        <select class="cat-cat" aria-label="Counts as">${SCAN_CATS.map(c=>`<option value="${c[0]}"${c[0]===e.category?" selected":""}>${c[1]}</option>`).join("")}</select>
+        <span class="code">#${esc(code)}</span>
+      </div>
+    </div>`).join("");
+}
+
 // ---- rate editor ----
 const RATE_FIELDS=[
   ["lockThreshold","Unlock threshold","min. postpaid activations to earn"],
@@ -1098,6 +1134,7 @@ function confirmResolve(){
   const category=$("resolveCat").value;
   const entry={category,label};
   catalog[code]=entry;save(KEY_CATALOG,catalog);
+  renderCatalog();
   closeResolve();
   addToCategory(code,entry);
 }
@@ -1211,7 +1248,7 @@ function applyTheme(t){
     : '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
 }
 
-function renderAll(){renderCalc();renderHistory();renderStats();renderChart();renderTables();renderRateEditor();}
+function renderAll(){renderCalc();renderHistory();renderStats();renderChart();renderTables();renderRateEditor();renderCatalog();}
 
 // ---- wire up ----
 document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>switchTab(b.dataset.tab)));
@@ -1227,6 +1264,20 @@ $("historyList").addEventListener("click",e=>{
   const ed=e.target.closest("[data-edit]"),dl=e.target.closest("[data-del]");
   if(ed){const it=history.find(h=>h.id===ed.dataset.edit);if(it)startEditing(it);}
   if(dl){if(confirm("Delete this saved period?")){history=history.filter(h=>h.id!==dl.dataset.del);save(KEY_HISTORY,history);renderHistory();renderStats();renderChart();toast("Period deleted");}}
+});
+$("catalogList").addEventListener("input",e=>{
+  const item=e.target.closest(".cat-item");if(!item)return;
+  const code=item.dataset.code;if(!catalog[code])return;
+  if(e.target.classList.contains("cat-name"))catalog[code].label=e.target.value.trim()||"Item";
+  if(e.target.classList.contains("cat-cat"))catalog[code].category=e.target.value;
+  save(KEY_CATALOG,catalog);
+});
+$("catalogList").addEventListener("click",e=>{
+  const del=e.target.closest(".cat-del");if(!del)return;
+  const item=e.target.closest(".cat-item");const code=item.dataset.code;
+  if(confirm("Remove this product? Future scans of its barcode will ask again.")){
+    delete catalog[code];save(KEY_CATALOG,catalog);renderCatalog();toast("Product removed");
+  }
 });
 $("saveRatesBtn").addEventListener("click",readRateEditor);
 $("resetRatesBtn").addEventListener("click",()=>{rates=normalizeRates(null);save(KEY_RATES,rates);renderRateEditor();renderCalc();renderTables();toast("Rates reset");});

@@ -53,6 +53,26 @@ basic use — Safari → Share → Add to Home Screen.)
 
 ---
 
+## Restricting who can download / use the app
+So not just anyone can get in. Two layers — Layer 2 is the one to rely on.
+
+**Layer 1 — restrict the download (Play Console / TestFlight)**
+- **Internal / Closed testing:** upload an allow-list of Google account emails
+  (up to 100 internal; more via a Google Group for closed). Only those accounts
+  can install from the Store. Apple's equivalent is **TestFlight** (invite by
+  email). Good for the early team; fiddly as you grow.
+- **Managed Google Play private app:** if you have a Google Workspace org, publish
+  an app visible only to your org's users.
+
+**Layer 2 — gate the app with your own login allow-list (recommended)**
+- Publish normally, but nobody gets past the login screen unless their account is
+  in your **approved-users list** in Firestore. Downloading without approval is
+  harmless.
+- Works the same on Android and iPhone, and you add/remove people from your own
+  data — no Google console juggling.
+- Needs Step 1 (accounts) first. **Claude can add this gate** — an "approved
+  users" check on sign-in — as a small follow-up once Firebase is on.
+
 ## Step 3 — Privacy policy (required once you have accounts)
 The Play Store requires a privacy policy the moment the app collects user data
 (i.e. after Step 1). A simple hosted page is enough — it can even live in this
