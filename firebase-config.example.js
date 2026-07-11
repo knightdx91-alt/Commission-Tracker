@@ -7,7 +7,10 @@
  *      - Google (optional, for "Continue with Google")
  * 4. Create a Firestore database (Production mode) and paste the rules
  *    from the README so each user can only read/write their own data.
- * 5. Rename this file to  firebase-config.js  and deploy it next to index.html.
+ * 5. Access is gated by an allow-list: only accounts listed in the Firestore
+ *    "allowlist" collection can get past the login screen. See the README
+ *    ("Restrict who can use the app") for how to add/remove people.
+ * 6. Rename this file to  firebase-config.js  and deploy it next to index.html.
  *
  * If this file is absent, the app simply runs local-only (no login) — no errors.
  */

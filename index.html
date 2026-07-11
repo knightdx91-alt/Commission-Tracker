@@ -1196,6 +1196,14 @@ window.onCloudUser=function(user){
     inEl.hidden=true;outEl.hidden=false;
   }
 };
+// called by the Firebase module when a valid sign-in is blocked by the allow-list
+window.onAccessDenied=function(user){
+  const inEl=$("accountSignedIn"),outEl=$("accountSignedOut");
+  if(inEl)inEl.hidden=true;
+  if(outEl)outEl.hidden=false;
+  const email=user&&user.email?" ("+user.email+")":"";
+  setAuthStatus("This account"+email+" isn't approved for access yet. Ask the admin to add you to the access list, then sign in again.","err");
+};
 
 function cloudUnavailable(){
   setAuthStatus("Cloud accounts aren't set up on this build. Host the app with a firebase-config.js to enable login (see README).","err");
@@ -1344,6 +1352,18 @@ if (cfg && cfg.apiKey) {
       signUpEmail: (e,p) => createUserWithEmailAndPassword(auth, e, p),
       signInGoogle: () => signInWithPopup(auth, new GoogleAuthProvider()),
       signOutUser: () => signOut(auth),
+      // Allow-list gate: only accounts listed in Firestore /allowlist/{email} may enter.
+      async isApproved(user){
+        const email = (user && user.email || "").toLowerCase();
+        if(!email) return false;
+        try{
+          const snap = await getDoc(doc(db, "allowlist", email));
+          return snap.exists();
+        }catch(e){
+          // A "permission-denied" here means the doc isn't there / not readable → treat as not approved.
+          return false;
+        }
+      },
       async save(data){
         if(!auth.currentUser) throw new Error("not signed in");
         await setDoc(stateRef(auth.currentUser.uid),
@@ -1356,7 +1376,17 @@ if (cfg && cfg.apiKey) {
       }
     };
 
-    onAuthStateChanged(auth, user => {
+    onAuthStateChanged(auth, async user => {
+      if (user) {
+        // Gate every sign-in through the approved-users list before letting them in.
+        const ok = await window.cloud.isApproved(user);
+        if (!ok) {
+          window.cloud.user = null;
+          if (typeof window.onAccessDenied === "function") window.onAccessDenied(user);
+          await signOut(auth).catch(()=>{});
+          return;
+        }
+      }
       window.cloud.user = user || null;
       if (typeof window.onCloudUser === "function") window.onCloudUser(user);
     });

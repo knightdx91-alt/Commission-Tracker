@@ -70,8 +70,9 @@ So not just anyone can get in. Two layers — Layer 2 is the one to rely on.
   harmless.
 - Works the same on Android and iPhone, and you add/remove people from your own
   data — no Google console juggling.
-- Needs Step 1 (accounts) first. **Claude can add this gate** — an "approved
-  users" check on sign-in — as a small follow-up once Firebase is on.
+- Needs Step 1 (accounts) first. ✅ **This gate is now built in** — sign-in
+  checks the Firestore `allowlist` collection and blocks anyone not on it. See
+  README section 6 ("Restrict who can use the app") for how to add/remove people.
 
 ## Step 3 — Privacy policy (required once you have accounts)
 The Play Store requires a privacy policy the moment the app collects user data

@@ -76,13 +76,51 @@ signs in and their data follows them to any device.
    rules_version = '2';
    service cloud.firestore {
      match /databases/{database}/documents {
+       // Each user can only read/write their own data.
        match /users/{uid}/{document=**} {
          allow read, write: if request.auth != null && request.auth.uid == uid;
+       }
+       // Approved-users allow-list. A signed-in person may read only the entry
+       // that matches their own email (to check if they're approved). Nobody can
+       // edit the list from the app — you manage it in the Firebase console.
+       match /allowlist/{email} {
+         allow read: if request.auth != null
+                     && request.auth.token.email.lower() == email;
+         allow write: if false;
        }
      }
    }
    ```
 7. Add your live domain under **Authentication → Settings → Authorized domains**.
+
+## 6. Restrict who can use the app (login allow-list)
+Publishing the app (or the Play Store listing) is harmless on its own: **nobody
+gets past the login screen unless their account is on your approved-users list.**
+You control that list from your own Firebase dashboard — no Google Play console
+juggling — and it works identically on Android and iPhone.
+
+How it works: on every sign-in the app looks for a document in the Firestore
+**`allowlist`** collection whose ID is the person's email (lower-case). If it's
+there, they're in; if not, they're immediately signed back out with a
+"not approved yet" message. The security rules above stop anyone editing the
+list from the app.
+
+**To approve someone** (Firebase Console → Firestore Database → Data):
+1. Click **Start collection** (first time) and name it exactly `allowlist`.
+   After that, just **Add document** to the existing `allowlist` collection.
+2. For **Document ID**, enter the person's email in **lower case**, e.g.
+   `jane@example.com`. (Google sign-in and Email/Password both use the account's
+   email, so one entry covers either sign-in method.)
+3. You don't need any fields — an empty document is enough. (Optional: add a
+   `name` or `note` field for your own reference.)
+4. Save. They can now sign in. **To revoke access**, delete that document — they
+   can't get past login on their next attempt.
+
+Notes:
+- Add yourself first, or you'll lock yourself out.
+- Emails are matched lower-case, so always use lower case for the Document ID.
+- Anyone can still *download* the app; the allow-list is what actually controls
+  access.
 
 Data model: each user's periods, rates, goal, and learned barcodes live in one
 document at `users/{uid}/app/state`. Costs are tiny — well inside Firebase's free
