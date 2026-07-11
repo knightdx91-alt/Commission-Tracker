@@ -333,6 +333,9 @@ tbody td:last-child{text-align:right;font-family:var(--font-num);font-variant-nu
 #toast[data-show]{opacity:1;transform:translateX(-50%) translateY(0)}
 #toast[data-undo]{pointer-events:auto;display:flex;align-items:center;gap:12px}
 #toast .undo{background:transparent;border:0;color:var(--accent);font-weight:800;font-size:.85rem;cursor:pointer;padding:2px 4px;text-transform:uppercase;letter-spacing:.03em}
+.reminder-banner{display:flex;align-items:center;gap:10px;background:color-mix(in srgb,var(--accent) 14%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));color:var(--ink);border-radius:12px;padding:10px 12px;margin-bottom:12px;font-size:.9rem;font-weight:600}
+.reminder-banner span{flex:1}
+.reminder-banner button{background:transparent;border:0;color:var(--muted);font-size:1.3rem;line-height:1;cursor:pointer;padding:0 4px}
 
 /* scan card */
 .scan-card{
@@ -399,6 +402,10 @@ tbody td:last-child{text-align:right;font-family:var(--font-num);font-variant-nu
 
   <!-- ============ CALCULATOR ============ -->
   <section id="calculator" class="panel" data-active>
+    <div class="reminder-banner" id="remindBanner" hidden>
+      <span id="remindText">Don't forget to log today's sales.</span>
+      <button type="button" id="remindDismiss" aria-label="Dismiss">&times;</button>
+    </div>
     <div class="hero">
       <div class="lead">
         <div>
@@ -645,6 +652,13 @@ tbody td:last-child{text-align:right;font-family:var(--font-num);font-variant-nu
       <input id="restoreFile" type="file" accept="application/json" hidden/>
     </div>
 
+    <div class="card">
+      <h2>Reminders</h2>
+      <p class="hint">Nudge me to log my sales if I haven't saved a period yet today. Shows a banner in the app, plus a phone notification if you allow it.</p>
+      <label style="display:flex;align-items:center;gap:10px;font-weight:600"><input type="checkbox" id="remindToggle"/> Remind me to log sales</label>
+      <div class="sync-status" id="remindStatus" hidden></div>
+    </div>
+
     <p class="foot">Commission Tracker &middot; data stored locally in your browser<br>
       <a href="./privacy.html" style="color:var(--accent)">Privacy policy</a></p>
   </section>
@@ -713,6 +727,8 @@ const KEY_SYNC="ct_sync_url_v4";
 const KEY_GOAL="ct_goal_v4";
 const KEY_THEME="ct_theme_v4";
 const KEY_CATALOG="ct_catalog_v4";
+const KEY_REMIND="ct_remind_v4";
+const KEY_REMIND_SEEN="ct_remind_seen_v4";
 
 const DEFAULT_RATES={
   lockThreshold:10,
@@ -844,6 +860,7 @@ function saveePeriod(){
   }
   save(KEY_HISTORY,history);
   renderHistory();renderStats();renderChart();
+  if(typeof checkReminder==="function")checkReminder();
   switchTab("history");
 }
 function startEditing(item){
@@ -1431,6 +1448,46 @@ function authMsg(err){
   return (err&&err.message)||"Something went wrong. Try again.";
 }
 
+// ---- reminders ----
+function todayStr(){return new Date().toISOString().slice(0,10);}
+function loggedToday(){const t=todayStr();return history.some(h=>h.periodDate===t);}
+function setRemindStatus(msg,kind){const el=$("remindStatus");if(!el)return;el.hidden=!msg;el.textContent=msg||"";el.setAttribute("data-kind",kind||"");}
+function checkReminder(){
+  const on=!!load(KEY_REMIND,false);
+  const banner=$("remindBanner");
+  if(on && !loggedToday()){
+    banner.hidden=false;
+    // Fire a system notification at most once per day, if the user allowed it.
+    if("Notification" in window && Notification.permission==="granted" && load(KEY_REMIND_SEEN,"")!==todayStr()){
+      try{new Notification("Commission Tracker",{body:"Don't forget to log today's sales."});}catch(e){}
+      save(KEY_REMIND_SEEN,todayStr());
+    }
+  }else{
+    banner.hidden=true;
+  }
+}
+function wireReminders(){
+  $("remindToggle").checked=!!load(KEY_REMIND,false);
+  $("remindToggle").addEventListener("change",async e=>{
+    const on=e.target.checked;save(KEY_REMIND,on);
+    if(on){
+      if("Notification" in window && Notification.permission==="default"){
+        try{const p=await Notification.requestPermission();
+          setRemindStatus(p==="granted"?"Reminders on — you'll get a banner and a phone notification.":"Reminders on — you'll see a banner in the app (notifications not allowed).","ok");
+        }catch(_){setRemindStatus("Reminders on — you'll see a banner in the app.","ok");}
+      }else if("Notification" in window && Notification.permission==="denied"){
+        setRemindStatus("Reminders on — banner only (notifications are blocked in your browser settings).","ok");
+      }else{
+        setRemindStatus("Reminders on.","ok");
+      }
+    }else{
+      setRemindStatus("Reminders off.","");
+    }
+    checkReminder();
+  });
+  $("remindDismiss").addEventListener("click",()=>{$("remindBanner").hidden=true;save(KEY_REMIND_SEEN,todayStr());});
+}
+
 // ---- tabs & theme ----
 function switchTab(name){
   document.querySelectorAll(".tab").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===name));
@@ -1521,7 +1578,9 @@ $("syncUrl").value=load(KEY_SYNC,"")||"";
 $("goalInput").value=goal||"";
 wireAccount();
 wireAdmin();
+wireReminders();
 renderAll();
+checkReminder();
 
 // ---- offline: register service worker when hosted (skipped in sandboxes/file://) ----
 if("serviceWorker" in navigator && /^https?:$/.test(location.protocol) && !/\.usercontent\.|artifact/.test(location.hostname)){
