@@ -1,6 +1,6 @@
 /* Commission Tracker service worker — offline app shell.
    Bump CACHE when you change any cached file so users get the update. */
-const CACHE = "commission-tracker-v5";
+const CACHE = "commission-tracker-v6";
 const ASSETS = [
   "./",
   "./index.html",
@@ -27,6 +27,13 @@ self.addEventListener("fetch", event => {
   if (req.method !== "GET") return;                 // never cache POST (e.g. Sheets sync)
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;       // let cross-origin (sync) pass through
+
+  // Always fetch the Firebase config fresh (never cache it) so login/config
+  // changes take effect immediately and a missing-file 404 is never cached.
+  if (url.pathname.endsWith("/firebase-config.js")) {
+    event.respondWith(fetch(req).catch(() => caches.match(req)));
+    return;
+  }
 
   // Network-first for the page so updates land; fall back to cache when offline.
   if (req.mode === "navigate") {
