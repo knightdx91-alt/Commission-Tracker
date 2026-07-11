@@ -1,6 +1,6 @@
 /* Commission Tracker service worker — offline app shell.
    Bump CACHE when you change any cached file so users get the update. */
-const CACHE = "commission-tracker-v7";
+const CACHE = "commission-tracker-v8";
 const ASSETS = [
   "./",
   "./index.html",

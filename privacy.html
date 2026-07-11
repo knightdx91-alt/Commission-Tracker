@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Privacy Policy — Commission Tracker</title>
+<style>
+  :root{color-scheme:light dark;--ink:#0f1e22;--muted:#5b6d72;--bg:#fff;--card:#f6f8f9;--line:#e3e9ea;--accent:#0a7d73}
+  @media (prefers-color-scheme:dark){:root{--ink:#eaf1f2;--muted:#8399a0;--bg:#0d181b;--card:#152329;--line:#22343a}}
+  *{box-sizing:border-box}
+  body{margin:0;font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg)}
+  .wrap{max-width:760px;margin:0 auto;padding:28px 20px 64px}
+  h1{font-size:1.6rem;margin:0 0 4px}
+  .sub{color:var(--muted);margin:0 0 24px}
+  h2{font-size:1.1rem;margin:28px 0 8px}
+  p,li{color:var(--ink)}
+  a{color:var(--accent)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-top:18px}
+  .back{display:inline-block;margin-top:28px;color:var(--accent);text-decoration:none;font-weight:600}
+  code{background:var(--card);padding:1px 5px;border-radius:5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Privacy Policy</h1>
+  <p class="sub">Commission Tracker &middot; last updated <span id="updated">2026</span></p>
+
+  <p>Commission Tracker (&ldquo;the app&rdquo;) helps a user track their own wireless-retail
+  commission. This policy explains what the app stores and how it is used. We keep
+  data collection to the minimum needed for the app to work.</p>
+
+  <h2>What the app stores</h2>
+  <ul>
+    <li><b>On your device:</b> the commission periods you save, your payout-rate
+      settings, your monthly goal, and the barcodes the scanner has learned. This
+      is kept locally in your browser and never leaves the device unless you turn
+      on an account or an export.</li>
+    <li><b>In your account (optional):</b> if you sign in, the same data above is
+      also saved to your private cloud record so it syncs across your devices. Your
+      sign-in email is stored to identify your account.</li>
+  </ul>
+
+  <h2>What we do <i>not</i> collect</h2>
+  <ul>
+    <li>No customer or sales-recipient personal information.</li>
+    <li>No location, contacts, photos, or device identifiers for advertising.</li>
+    <li>No selling or sharing of your data with third parties for marketing.</li>
+  </ul>
+
+  <h2>Accounts &amp; access</h2>
+  <p>Sign-in and cloud sync are handled by <b>Google Firebase</b> (Authentication
+  and Firestore). Your email and app data are stored in the app owner&rsquo;s Firebase
+  project and protected by security rules so only you — and an app administrator —
+  can access your record. Access to the app is limited to an approved-users list
+  maintained by the administrator.</p>
+
+  <h2>Barcode lookups</h2>
+  <p>When you scan a new barcode, the number may be sent to a third-party product
+  database (UPCitemdb) to fetch the product name. Only the barcode number is sent;
+  no personal data is included. If the lookup is unavailable, you can enter the name
+  manually.</p>
+
+  <h2>Camera</h2>
+  <p>The barcode scanner uses your device camera only while the scan screen is open.
+  Camera images are processed on-device to read the barcode and are not stored or
+  transmitted.</p>
+
+  <h2>Your choices</h2>
+  <ul>
+    <li>Use the app fully offline without an account — all data stays on your device.</li>
+    <li>Export a backup of your data at any time from Settings.</li>
+    <li>Ask the administrator to remove your account from the access list; deleting
+      your account record removes your synced data.</li>
+  </ul>
+
+  <h2>Data retention</h2>
+  <p>Local data remains until you clear it or uninstall the app. Account data remains
+  until it is deleted by you or the administrator.</p>
+
+  <h2>Contact</h2>
+  <div class="card">
+    <p style="margin:0">Questions about this policy or your data? Contact the app
+    administrator at <a id="contact" href="mailto:terryautwell@hotmail.com">terryautwell@hotmail.com</a>.</p>
+  </div>
+
+  <a class="back" href="./index.html">&larr; Back to the app</a>
+</div>
+<script>document.getElementById("updated").textContent=new Date().getFullYear();</script>
+</body>
+</html>
