@@ -462,6 +462,9 @@ tbody td:last-child{text-align:right;font-family:var(--font-num);font-variant-nu
       <div class="section-label">Adjustments</div>
       <div class="grid g2">
         <div class="field"><label for="recovery">Postpaid recovery <span class="sub">deducted at postpaid rate</span></label><input id="recovery" class="num-in" type="number" min="0" step="1" inputmode="numeric" value="0"/></div>
+        <div class="field"><label for="chargebacks">Chargebacks ($) <span class="sub">clawed-back commission</span></label><input id="chargebacks" class="num-in" type="number" min="0" step="1" inputmode="numeric" value="0"/></div>
+      </div>
+      <div class="grid g1">
         <div class="field"><label for="notes">Notes</label><input id="notes" placeholder="Optional" autocomplete="off"/></div>
       </div>
 
@@ -509,6 +512,11 @@ tbody td:last-child{text-align:right;font-family:var(--font-num);font-variant-nu
           <option value="total-desc">Highest payout</option>
           <option value="total-asc">Lowest payout</option>
         </select>
+      </div>
+      <div class="toolbar" style="margin-top:8px;align-items:end">
+        <div class="field" style="flex:1;margin:0"><label for="histFrom" style="font-size:.7rem">From</label><input id="histFrom" type="date"/></div>
+        <div class="field" style="flex:1;margin:0"><label for="histTo" style="font-size:.7rem">To</label><input id="histTo" type="date"/></div>
+        <button class="neutral" id="histClearFilter" style="flex:none" title="Clear date filter">Clear</button>
       </div>
       <div id="historyList"></div>
     </div>
@@ -733,7 +741,7 @@ function normalizeRates(r){return Object.assign({},DEFAULT_RATES,r||{},{
 });}
 
 // ---- helpers ----
-const NUM_IDS=["postpaid","upgrades","ports","accessories","prepaid","wpp","cpp","internet","autopay","recovery"];
+const NUM_IDS=["postpaid","upgrades","ports","accessories","prepaid","wpp","cpp","internet","autopay","recovery","chargebacks"];
 function money(v){return Number(v||0).toLocaleString(undefined,{style:"currency",currency:"USD"});}
 function money0(v){return Number(v||0).toLocaleString(undefined,{style:"currency",currency:"USD",maximumFractionDigits:0});}
 function numVal(id){const el=$(id);let n=Math.floor(Number(el.value));if(!isFinite(n)||n<0)n=0;return n;}
@@ -776,6 +784,9 @@ function compute(inp){
     {key:"Auto Pay",qty:inp.autopay,rate:rates.autopay,val:z(inp.autopay*rates.autopay)},
     {key:"Postpaid recovery",qty:inp.recovery,rate:postRate,val:z(-inp.recovery*postRate),neg:true}
   ];
+  // Chargebacks reverse already-earned commission, so they apply even when the
+  // current period is locked (not zeroed by z()).
+  if(inp.chargebacks>0) lines.push({key:"Chargebacks",qty:0,rate:0,val:-inp.chargebacks,neg:true});
   const grand=lines.reduce((s,l)=>s+l.val,0);
   return {attainment,postRate,preRate,locked,lines,grand};
 }
@@ -851,7 +862,13 @@ function stopEditing(){editingId=null;$("editingNote").removeAttribute("data-on"
 function monthLabel(d){const dt=new Date(d+"T00:00:00");if(isNaN(dt))return "Undated";return dt.toLocaleDateString(undefined,{month:"long",year:"numeric"});}
 function filteredHistory(){
   const q=$("searchBox").value.trim().toLowerCase();
-  let list=history.filter(h=>!q||h.periodName.toLowerCase().includes(q)||(h.notes||"").toLowerCase().includes(q));
+  const from=$("histFrom").value, to=$("histTo").value;
+  let list=history.filter(h=>{
+    if(q && !(h.periodName.toLowerCase().includes(q)||(h.notes||"").toLowerCase().includes(q))) return false;
+    if(from && (h.periodDate||"")<from) return false;
+    if(to && (h.periodDate||"")>to) return false;
+    return true;
+  });
   const s=$("sortBy").value;
   const g=h=>Number(h.result.grandTotal||0);
   list.sort((a,b)=> s==="date-asc"?a.periodDate.localeCompare(b.periodDate):
@@ -1028,8 +1045,8 @@ function resetForm(){
 // ---- CSV / backup ----
 function exportCSV(){
   if(!history.length)return toast("Nothing to export yet");
-  const head=["Period","Date","Postpaid","Upgrades","Ports","Accessories","Prepaid","WPP","CPP","Internet","AutoPay","Recovery","Attainment","PostRate","PreRate","Locked","Total","Notes"];
-  const rows=history.map(h=>{const i=h.inputs||{},r=h.result||{};return [h.periodName,h.periodDate,i.postpaid,i.upgrades,i.ports,i.accessories,i.prepaid,i.wpp,i.cpp,i.internet,i.autopay,i.recovery,r.attainment,r.postRate,r.preRate,r.locked?"Yes":"No",r.grandTotal,h.notes];});
+  const head=["Period","Date","Postpaid","Upgrades","Ports","Accessories","Prepaid","WPP","CPP","Internet","AutoPay","Recovery","Chargebacks","Attainment","PostRate","PreRate","Locked","Total","Notes"];
+  const rows=history.map(h=>{const i=h.inputs||{},r=h.result||{};return [h.periodName,h.periodDate,i.postpaid,i.upgrades,i.ports,i.accessories,i.prepaid,i.wpp,i.cpp,i.internet,i.autopay,i.recovery,i.chargebacks||0,r.attainment,r.postRate,r.preRate,r.locked?"Yes":"No",r.grandTotal,h.notes];});
   const csv=[head,...rows].map(r=>r.map(c=>`"${String(c==null?"":c).replace(/"/g,'""')}"`).join(",")).join("\n");
   downloadBlob(csv,"text/csv","commission-history-"+new Date().toISOString().slice(0,10)+".csv");
   toast("CSV exported");
@@ -1441,6 +1458,9 @@ $("cancelEdit").addEventListener("click",()=>{stopEditing();resetForm();});
 $("exportCsvBtn").addEventListener("click",exportCSV);
 $("searchBox").addEventListener("input",renderHistory);
 $("sortBy").addEventListener("change",renderHistory);
+$("histFrom").addEventListener("change",renderHistory);
+$("histTo").addEventListener("change",renderHistory);
+$("histClearFilter").addEventListener("click",()=>{$("histFrom").value="";$("histTo").value="";$("searchBox").value="";renderHistory();});
 $("historyList").addEventListener("click",e=>{
   const ed=e.target.closest("[data-edit]"),dl=e.target.closest("[data-del]");
   if(ed){const it=history.find(h=>h.id===ed.dataset.edit);if(it)startEditing(it);}
