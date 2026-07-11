@@ -535,15 +535,25 @@ tbody td:last-child{text-align:right;font-family:var(--font-num);font-variant-nu
       <h2>Account</h2>
       <div id="accountSignedOut">
         <p class="hint">Sign in to back up your data and use it on any device. Optional — the app works fully without an account.</p>
-        <div class="grid g2">
-          <div class="field"><label for="authEmail">Email</label><input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com"/></div>
-          <div class="field"><label for="authPass">Password</label><input id="authPass" type="password" autocomplete="current-password" placeholder="At least 6 characters"/></div>
+        <!-- Step 1: choose what you want to do -->
+        <div id="authChoose">
+          <div class="btn-row">
+            <button type="button" class="primary" id="chooseLoginBtn" style="flex:1">Log in</button>
+            <button type="button" class="soft" id="chooseSignupBtn" style="flex:1">Create account</button>
+          </div>
+          <div class="btn-row"><button type="button" class="neutral" id="googleBtn" style="flex:1">Continue with Google</button></div>
         </div>
-        <div class="btn-row">
-          <button type="button" class="primary" id="signInBtn">Sign in</button>
-          <button type="button" class="soft" id="signUpBtn">Create account</button>
+        <!-- Step 2: enter credentials (shown after a choice above) -->
+        <div id="authForm" hidden>
+          <div class="grid g2">
+            <div class="field"><label for="authEmail">Email</label><input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com"/></div>
+            <div class="field"><label for="authPass">Password</label><input id="authPass" type="password" autocomplete="current-password" placeholder="At least 6 characters"/></div>
+          </div>
+          <div class="btn-row">
+            <button type="button" class="primary" id="authSubmitBtn">Log in</button>
+            <button type="button" class="neutral" id="authBackBtn" style="flex:none">Back</button>
+          </div>
         </div>
-        <div class="btn-row"><button type="button" class="neutral" id="googleBtn" style="flex:1">Continue with Google</button></div>
         <div class="sync-status" id="authStatus" hidden></div>
       </div>
       <div id="accountSignedIn" hidden>
@@ -1232,6 +1242,7 @@ window.onCloudUser=function(user){
     toast("Signed in");
   }else{
     inEl.hidden=true;outEl.hidden=false;
+    if(typeof showAuthChoose==="function")showAuthChoose();
     hideAdminUI();
   }
 };
@@ -1305,6 +1316,7 @@ window.onAccessDenied=function(user){
   const inEl=$("accountSignedIn"),outEl=$("accountSignedOut");
   if(inEl)inEl.hidden=true;
   if(outEl)outEl.hidden=false;
+  if(typeof showAuthChoose==="function")showAuthChoose();
   const email=user&&user.email?" ("+user.email+")":"";
   setAuthStatus("This account"+email+" isn't approved for access yet. Ask the admin to add you to the access list, then sign in again.","err");
 };
@@ -1312,21 +1324,49 @@ window.onAccessDenied=function(user){
 function cloudUnavailable(){
   setAuthStatus("Cloud accounts aren't set up on this build. Host the app with a firebase-config.js to enable login (see README).","err");
 }
-function wireAccount(){
-  $("signInBtn").addEventListener("click",()=>{
-    if(!window.cloud)return cloudUnavailable();
-    const e=$("authEmail").value.trim(),p=$("authPass").value;
+let authMode="login"; // "login" or "signup"
+function showAuthChoose(){
+  $("authForm").hidden=true;
+  $("authChoose").hidden=false;
+  $("authStatus").hidden=true;
+}
+function showAuthForm(mode){
+  authMode=mode;
+  $("authChoose").hidden=true;
+  $("authForm").hidden=false;
+  $("authStatus").hidden=true;
+  const login = mode==="login";
+  $("authSubmitBtn").textContent = login ? "Log in" : "Create account";
+  $("authPass").setAttribute("autocomplete", login ? "current-password" : "new-password");
+  $("authPass").placeholder = login ? "Your password" : "At least 6 characters";
+  $("authEmail").focus();
+}
+function submitAuth(){
+  if(!window.cloud)return cloudUnavailable();
+  const e=$("authEmail").value.trim(),p=$("authPass").value;
+  if(authMode==="login"){
     if(!e||!p)return setAuthStatus("Enter your email and password.","err");
-    setAuthStatus("Signing in…","busy");
+    setAuthStatus("Logging in…","busy");
     window.cloud.signInEmail(e,p).catch(err=>setAuthStatus(authMsg(err),"err"));
-  });
-  $("signUpBtn").addEventListener("click",()=>{
-    if(!window.cloud)return cloudUnavailable();
-    const e=$("authEmail").value.trim(),p=$("authPass").value;
+  }else{
     if(!e||p.length<6)return setAuthStatus("Use a valid email and a password of at least 6 characters.","err");
     setAuthStatus("Creating your account…","busy");
     window.cloud.signUpEmail(e,p).catch(err=>setAuthStatus(authMsg(err),"err"));
+  }
+}
+function wireAccount(){
+  $("chooseLoginBtn").addEventListener("click",()=>{
+    if(!window.cloud)return cloudUnavailable();
+    showAuthForm("login");
   });
+  $("chooseSignupBtn").addEventListener("click",()=>{
+    if(!window.cloud)return cloudUnavailable();
+    showAuthForm("signup");
+  });
+  $("authBackBtn").addEventListener("click",showAuthChoose);
+  $("authSubmitBtn").addEventListener("click",submitAuth);
+  $("authPass").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();submitAuth();}});
+  $("authEmail").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();submitAuth();}});
   $("googleBtn").addEventListener("click",()=>{
     if(!window.cloud)return cloudUnavailable();
     setAuthStatus("Opening Google…","busy");
