@@ -95,9 +95,14 @@ fully local, no errors.
 ## Notes on the barcode scanner
 - Uses the browser's built-in `BarcodeDetector` (Android Chrome). Where that
   isn't available, users can type the barcode number — same result.
-- The app **learns** codes: an unknown barcode asks what it is once, then
-  remembers it. Best suited to **accessories and physical add-ons** (activations,
-  upgrades, and ports aren't barcoded products).
+- New barcodes are **looked up online automatically** (via UPCitemdb's free
+  trial endpoint) to fill in the product name — no typing when the product is
+  found. Not-found or offline falls back to a quick manual entry. The app then
+  **remembers** the code, so every future scan is instant.
+- The lookup uses a free trial with a light daily limit. For heavier use, swap in
+  a paid UPC API key (edit `lookupProduct()` in `index.html`).
+- Best suited to **accessories and physical add-ons** (activations, upgrades, and
+  ports aren't barcoded products).
 - Learned codes are stored on the device and included in **Export backup**.
 
 ## Data & privacy

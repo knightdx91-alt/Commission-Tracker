@@ -363,6 +363,10 @@ tbody td:last-child{text-align:right;font-family:var(--font-num);font-variant-nu
 .scan-manual input{flex:1}
 .last-scan{margin-top:12px;font-size:.82rem;color:var(--ink-soft);min-height:1.2em;text-align:center}
 .last-scan b{font-family:var(--font-num)}
+#resolvePanel{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.resolve-title{font-size:.82rem;font-weight:700;color:var(--accent-ink);margin-bottom:10px}
+.resolve-title small{display:block;color:var(--muted);font-weight:500;font-family:var(--font-num);margin-top:2px}
+.resolve-title[data-busy]::after{content:" …looking up";color:var(--muted);font-weight:500}
 </style>
 </head>
 <body>
@@ -602,11 +606,21 @@ tbody td:last-child{text-align:right;font-family:var(--font-num);font-variant-nu
       <div class="cam-msg" id="camMsg">Starting camera…</div>
     </div>
     <div class="last-scan" id="lastScan"></div>
-    <div class="scan-manual">
+    <div class="scan-manual" id="scanManual">
       <input id="manualCode" class="num-in" inputmode="numeric" placeholder="Or type a barcode number" autocomplete="off"/>
       <button type="button" class="primary" id="manualAdd" style="flex:none">Add</button>
     </div>
-    <p class="hint" style="margin:11px 0 0;text-align:center">Unknown barcodes ask what they are once, then remember it.</p>
+    <p class="hint" id="scanHint" style="margin:11px 0 0;text-align:center">New barcodes are looked up automatically, then remembered.</p>
+
+    <div id="resolvePanel" hidden>
+      <div class="resolve-title" id="resolveTitle">New product</div>
+      <div class="field" style="margin-bottom:10px"><label for="resolveName">Product name</label><input id="resolveName" autocomplete="off" placeholder="Product name"/></div>
+      <div class="field"><label for="resolveCat">Counts as</label><select id="resolveCat"></select></div>
+      <div class="btn-row">
+        <button type="button" class="primary" id="resolveAdd">Add to sale</button>
+        <button type="button" class="neutral" id="resolveCancel" style="flex:none">Cancel</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -970,14 +984,14 @@ const SCAN_CATS=[
   ["internet","ST Home Internet"],["autopay","Auto Pay"],["prepaid","Prepaid activation"],
   ["postpaid","Postpaid activation"],["upgrades","Upgrade"],["ports","Port"]
 ];
-let scanStream=null, scanDetector=null, scanLoop=null, scanBusy=false;
+let scanStream=null, scanDetector=null, scanLoop=null, scanBusy=false, resolving=false;
 
 function openScan(){
   $("scanModal").setAttribute("data-open","");
   $("manualCode").value="";$("lastScan").textContent="";
   startCamera();
 }
-function closeScan(){$("scanModal").removeAttribute("data-open");stopCamera();}
+function closeScan(){$("scanModal").removeAttribute("data-open");stopCamera();closeResolve();}
 
 async function startCamera(){
   const msg=$("camMsg"),vid=$("camVideo"),ret=$("reticle");
@@ -1004,7 +1018,7 @@ function stopCamera(){
 }
 async function tickScan(){
   if(!scanStream||!scanDetector)return;
-  if(!scanBusy){
+  if(!scanBusy&&!resolving){
     scanBusy=true;
     try{
       const codes=await scanDetector.detect($("camVideo"));
@@ -1014,32 +1028,78 @@ async function tickScan(){
   }
   scanLoop=requestAnimationFrame(tickScan);
 }
-function processCode(code){
-  code=String(code||"").trim();
-  if(!code)return;
-  let entry=catalog[code];
-  if(!entry){
-    const choice=promptCategory(code);
-    if(!choice)return;
-    entry={category:choice.category,label:choice.label};
-    catalog[code]=entry;save(KEY_CATALOG,catalog);
-  }
+function addToCategory(code,entry){
   const el=$(entry.category);
   el.value=numVal(entry.category)+1;
   renderCalc();
-  const line=`Added 1 × ${entry.label} — new count ${el.value}`;
-  $("lastScan").innerHTML=line+` &nbsp;<b>#${esc(code)}</b>`;
-  toast(line);
+  const catLabel=(SCAN_CATS.find(c=>c[0]===entry.category)||[])[1]||entry.category;
+  const line=`Added: ${entry.label} (${catLabel}) — count ${el.value}`;
+  $("lastScan").innerHTML=esc(line)+` &nbsp;<b>#${esc(code)}</b>`;
+  toast("Added: "+entry.label);
   if(navigator.vibrate)navigator.vibrate(40);
 }
-function promptCategory(code){
-  const menu=SCAN_CATS.map((c,i)=>`${i+1}. ${c[1]}`).join("\n");
-  const pick=prompt(`New barcode #${code}\nWhat did you sell? Enter a number:\n\n${menu}`,"1");
-  if(pick===null)return null;
-  const idx=parseInt(pick,10)-1;
-  if(!(idx>=0&&idx<SCAN_CATS.length)){toast("Not added — unknown option");return null;}
-  const [category,label]=SCAN_CATS[idx];
-  return {category,label};
+async function processCode(code){
+  code=String(code||"").trim();
+  if(!code||resolving)return;
+  const known=catalog[code];
+  if(known){addToCategory(code,known);return;}   // seen before → instant, no typing
+  openResolve(code);                              // new → look it up online, then confirm
+}
+
+// Look up a product name from its barcode via a free UPC database.
+async function lookupProduct(code){
+  if(!navigator.onLine)return null;
+  const ctrl=new AbortController();
+  const timer=setTimeout(()=>ctrl.abort(),6000);
+  try{
+    const r=await fetch("https://api.upcitemdb.com/prod/trial/lookup?upc="+encodeURIComponent(code),{signal:ctrl.signal});
+    if(!r.ok)return null;
+    const d=await r.json();
+    const it=d&&d.items&&d.items[0];
+    if(!it)return null;
+    return {title:(it.title||"").trim(),brand:(it.brand||"").trim(),category:(it.category||"").trim()};
+  }catch(e){return null;}
+  finally{clearTimeout(timer);}
+}
+// Best-guess commission category from a product's name/type.
+function guessCategory(text){
+  const t=(text||"").toLowerCase();
+  if(/screen protector|tempered|warranty|protection plan/.test(t))return "accessories";
+  if(/prepaid|sim|airtime|refill/.test(t))return "prepaid";
+  return "accessories"; // physical goods with barcodes are almost always accessories
+}
+async function openResolve(code){
+  resolving=true;
+  $("scanManual").hidden=true;$("scanHint").hidden=true;$("lastScan").textContent="";
+  const panel=$("resolvePanel"),title=$("resolveTitle"),name=$("resolveName"),cat=$("resolveCat");
+  cat.innerHTML=SCAN_CATS.map(c=>`<option value="${c[0]}">${c[1]}</option>`).join("");
+  panel.hidden=false;panel.dataset.code=code;
+  name.value="";cat.value="accessories";
+  title.innerHTML=`New barcode<small>#${esc(code)}</small>`;title.setAttribute("data-busy","");
+  const info=await lookupProduct(code);
+  title.removeAttribute("data-busy");
+  if(info&&info.title){
+    name.value=info.brand&&!info.title.toLowerCase().includes(info.brand.toLowerCase())?`${info.brand} ${info.title}`:info.title;
+    cat.value=guessCategory(info.title+" "+info.category);
+    title.innerHTML=`Found it — check the details<small>#${esc(code)}</small>`;
+  }else{
+    title.innerHTML=`Couldn't look this one up — name it once<small>#${esc(code)}</small>`;
+  }
+  name.focus();
+}
+function closeResolve(){
+  resolving=false;
+  $("resolvePanel").hidden=true;
+  $("scanManual").hidden=false;$("scanHint").hidden=false;
+}
+function confirmResolve(){
+  const code=$("resolvePanel").dataset.code;
+  const label=$("resolveName").value.trim()||"Item";
+  const category=$("resolveCat").value;
+  const entry={category,label};
+  catalog[code]=entry;save(KEY_CATALOG,catalog);
+  closeResolve();
+  addToCategory(code,entry);
 }
 
 // ---- cloud sync (Firebase, wired up by the module script when configured) ----
@@ -1182,6 +1242,9 @@ $("closeScan").addEventListener("click",closeScan);
 $("scanModal").addEventListener("click",e=>{if(e.target===$("scanModal"))closeScan();});
 $("manualAdd").addEventListener("click",()=>{const c=$("manualCode").value.trim();if(c){processCode(c);$("manualCode").value="";}});
 $("manualCode").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("manualAdd").click();}});
+$("resolveAdd").addEventListener("click",confirmResolve);
+$("resolveCancel").addEventListener("click",closeResolve);
+$("resolveName").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();confirmResolve();}});
 $("themeBtn").addEventListener("click",()=>{
   const cur=document.documentElement.getAttribute("data-theme");
   const sysDark=matchMedia("(prefers-color-scheme:dark)").matches;
