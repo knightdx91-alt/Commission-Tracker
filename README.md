@@ -131,11 +131,36 @@ is a document in `allowlist` whose ID is their lower-case email. An empty
 document approves them as a normal user; add `admin: true` to make them an admin.
 Delete the document to revoke access.
 
+**Adding more admins later:** there's nothing special to do in the console —
+sign in as an existing admin, open **Manage access**, add the person by email
+and tick **"Also make them an admin"**. (If they were already added as a normal
+user, just remove them and re-add them with the admin box ticked. Or, from the
+console, open their document in `allowlist` and set the `admin` field to boolean
+`true`.) A normal user has no `admin` field (or `admin: false`); an admin has
+`admin: true` — that single flag is the only difference.
+
 Notes:
 - Make yourself admin first, or you'll have no way to manage the list in-app.
 - Emails are matched lower-case, so always use lower case for the Document ID.
 - Anyone can still *download* the app; the allow-list is what actually controls
   access.
+
+### Hosting it on your own domain later (authorized domains)
+Firebase only lets sign-in happen from domains you've approved. The GitHub Pages
+domain (`knightdx91-alt.github.io`) is added during setup. If you later move the
+app to a real domain (e.g. `app.yourbusiness.com`), sign-in will start failing
+with an `auth/unauthorized-domain` error until you add the new domain:
+
+1. Firebase Console → **Authentication** → **Settings** tab → **Authorized
+   domains**.
+2. Click **Add domain**, type just the bare hostname — **no `https://`, no
+   trailing slash, no path** (e.g. `app.yourbusiness.com`, not
+   `https://app.yourbusiness.com/`).
+3. Add it and you're done — it takes effect immediately.
+
+Keep the old domain in the list too if the app still loads there; adding a domain
+never removes the others. `localhost` is always allowed automatically, so local
+testing works without adding anything.
 
 Data model: each user's periods, rates, goal, and learned barcodes live in one
 document at `users/{uid}/app/state`. Costs are tiny — well inside Firebase's free
